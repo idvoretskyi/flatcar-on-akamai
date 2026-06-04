@@ -1,0 +1,15 @@
+# Copy to terraform.tfvars and edit. Do NOT commit terraform.tfvars.
+# Export your token separately:  export LINODE_TOKEN=...
+
+# Required: the private image id from scripts/upload-image.sh
+image_id = "private/0000000"
+
+# Must match the region the image was uploaded to.
+region = "us-ord"
+
+# Optional overrides:
+# instance_type = "g6-nanode-1"
+# label         = "flatcar-akamai"
+# tags          = ["flatcar", "managed-by-opentofu"]
+# private_ip    = false
+# ignition_path = "../build/ignition.json"

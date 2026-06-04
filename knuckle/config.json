@@ -1,0 +1,23 @@
+{
+  "os": "flatcar",
+  "arch": "amd64",
+  "channel": "stable",
+  "hostname": "flatcar-akamai",
+  "timezone": "UTC",
+  "network": {
+    "mode": "dhcp"
+  },
+  "users": [
+    {
+      "username": "core",
+      "groups": ["sudo", "docker"],
+      "ssh_keys": [
+        "ssh-ed25519 AAAAREPLACE_ME_WITH_YOUR_PUBLIC_KEY user@host"
+      ]
+    }
+  ],
+  "disk": "/dev/sda",
+  "update_strategy": "off",
+  "swap": { "enabled": false },
+  "reboot": false
+}

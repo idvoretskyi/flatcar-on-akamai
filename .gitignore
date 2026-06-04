@@ -1,0 +1,28 @@
+# Local environment / secrets
+.env
+*.tfvars
+!terraform.tfvars.example
+
+# Build artifacts
+/build/
+*.bin.gz
+*.bin
+ignition.json
+*.ign
+
+# OpenTofu / Terraform state and plugins
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+crash.log
+tofu.plan
+*.tfplan
+
+# Vendored tools
+/bin/
+butane
+
+# Editor / OS noise
+*.swp
+.DS_Store
