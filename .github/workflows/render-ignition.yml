@@ -10,7 +10,7 @@ on:
       ssh_key:
         description: "SSH public key to embed (placeholder is fine for a test render)"
         required: false
-        default: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAICIFakeKeyForCIValidationOnly000000000000 ci@test"
+        default: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA ci@test"
       hostname:
         description: "Hostname"
         required: false
@@ -23,8 +23,8 @@ jobs:
   render:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
         with:
           go-version: "1.26"
       - name: render via knuckle backend
@@ -36,7 +36,7 @@ jobs:
       - name: show summary
         run: |
           jq '{version: .ignition.version, users: [.passwd.users[].name], files: [.storage.files[].path]}' build/ignition.json
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ignition
           path: build/ignition.json
