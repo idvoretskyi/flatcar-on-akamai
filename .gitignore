@@ -21,7 +21,6 @@ tofu.plan
 
 # Vendored tools
 /bin/
-butane
 
 # Editor / OS noise
 *.swp
