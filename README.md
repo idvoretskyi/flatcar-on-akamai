@@ -1,5 +1,10 @@
 # flatcar-on-akamai
 
+[![ci](https://github.com/idvoretskyi/flatcar-on-akamai/actions/workflows/ci.yml/badge.svg)](https://github.com/idvoretskyi/flatcar-on-akamai/actions/workflows/ci.yml)
+[![trivy](https://github.com/idvoretskyi/flatcar-on-akamai/actions/workflows/trivy.yml/badge.svg)](https://github.com/idvoretskyi/flatcar-on-akamai/actions/workflows/trivy.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![OpenTofu](https://img.shields.io/badge/provisioned%20with-OpenTofu-7B42BC?logo=opentofu)](https://opentofu.org/)
+
 Zero-touch [Flatcar Container Linux](https://www.flatcar.org/) on
 [Akamai Cloud (Linode)](https://www.linode.com/), provisioned with
 [OpenTofu](https://opentofu.org/) and configured with

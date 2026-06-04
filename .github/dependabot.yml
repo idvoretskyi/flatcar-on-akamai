@@ -1,0 +1,30 @@
+version: 2
+
+updates:
+  # ── GitHub Actions ──────────────────────────────────────────────────────────
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      actions-minor-patch:
+        update-types: [minor, patch]
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - github-actions
+
+  # ── Terraform / OpenTofu ────────────────────────────────────────────────────
+  - package-ecosystem: terraform
+    directory: /tofu
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      terraform-minor-patch:
+        update-types: [minor, patch]
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - terraform
