@@ -10,9 +10,9 @@ The deploy is **seamless**: one-time image upload, then `tofu apply` brings up a
 fully-configured Flatcar node with your SSH key already installed — no rescue
 mode, no serial-console babysitting, no `flatcar-install` dance.
 
-> **Status:** authored and validated offline. Nothing here has been deployed
-> against a live account yet — running `make image` / `make apply` is the point
-> at which you start spending money.
+> **Status:** deployed and verified on Akamai Cloud (Linode, `us-ord`).
+> Flatcar Container Linux 4593.2.2 booted zero-touch, Ignition applied on first
+> boot, `ssh core@<ip>` worked immediately.
 
 ## How it works
 
