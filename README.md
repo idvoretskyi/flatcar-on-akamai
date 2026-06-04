@@ -93,6 +93,30 @@ see [knuckle/README.md](knuckle/README.md).
 4. [Ignition generation (knuckle & butane)](docs/04-ignition-knuckle.md)
 5. [Alternative: knuckle native install](docs/05-knuckle-rescue-mode.md)
 6. [Troubleshooting](docs/06-troubleshooting.md)
+7. [Kubernetes on Flatcar (k3s)](docs/07-kubernetes-k3s.md)
+
+## Kubernetes (k3s)
+
+Set `CLUSTER=k3s` to layer a single-node [k3s](https://k3s.io/) cluster on top
+of the bare Flatcar node. A Butane overlay (`butane/k8s/k3s-server.bu`) is
+compiled and deep-merged with the base Ignition at render time — no extra
+provisioner, no second boot, no SSH scripts.
+
+```bash
+# Render with the k3s overlay (token auto-generated)
+make ignition CLUSTER=k3s
+
+# Deploy (g6-standard-1, ~$12/mo — see docs/07-kubernetes-k3s.md to resize)
+make apply
+
+# Fetch kubeconfig (~2 min after apply for k3s to bootstrap)
+make kubeconfig
+export KUBECONFIG=$(pwd)/kubeconfig
+kubectl get nodes
+```
+
+See [docs/07-kubernetes-k3s.md](docs/07-kubernetes-k3s.md) for sizing, security
+notes, the path to multi-node, and variable reference.
 
 ## Important caveats
 

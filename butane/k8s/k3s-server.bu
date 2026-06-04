@@ -1,0 +1,112 @@
+# k3s server overlay — Butane/Ignition fragment.
+#
+# This is a COMPOSABLE OVERLAY. It is compiled to Ignition and deep-merged
+# onto the base OS Ignition (produced by either the knuckle or butane backend)
+# at render time by scripts/render-ignition.sh when CLUSTER=k3s.
+#
+# The overlay is intentionally disjoint from the base OS config:
+#   - it owns everything k8s: sysext install, config, token, service unit
+#   - the base OS stays byte-for-byte bare Flatcar
+#
+# Variables substituted by envsubst before butane compilation:
+#   ${HOSTNAME}   — node hostname (reused from base, for TLS-SAN record-keeping)
+#   ${K3S_TOKEN}  — shared cluster secret (auto-generated if unset)
+#
+variant: flatcar
+version: 1.1.0
+
+# ---------------------------------------------------------------------------
+# k3s sysext install
+#
+# Flatcar's systemd-sysupdate machinery is used to fetch and activate the
+# k3s sysext from the official Flatcar Bakery. This mirrors the pattern
+# documented at https://www.flatcar.org/docs/latest/provisioning/sysext/
+# ---------------------------------------------------------------------------
+storage:
+  files:
+    # sysupdate transfer file — tells systemd-sysupdate where to fetch k3s.
+    - path: /etc/sysupdate.k3s.d/k3s.conf
+      mode: 0644
+      contents:
+        inline: |
+          [Transfer]
+          Verify=false
+
+          [Source]
+          Type=url-file
+          Path=https://github.com/flatcar/sysext-bakery/releases/latest/download/
+          MatchPattern=k3s-@v-%a.raw
+
+          [Target]
+          Type=regular-file
+          Path=/etc/extensions/
+          MatchPattern=k3s-@v-%a.raw
+          CurrentSymlink=/etc/extensions/k3s.raw
+
+    # k3s runtime config — single-server, write kubeconfig 0644 so core can read.
+    - path: /etc/rancher/k3s/config.yaml
+      mode: 0600
+      contents:
+        inline: |
+          # k3s server configuration
+          # https://docs.k3s.io/installation/configuration
+          write-kubeconfig-mode: "0644"
+          token: "${K3S_TOKEN}"
+          # Disable Traefik — use your own ingress if needed.
+          disable:
+            - traefik
+          # Single-node: allow workloads on the control-plane node.
+          node-taint: []
+          # Record the hostname for log clarity.
+          node-name: "${HOSTNAME}"
+          # Bind the API server to all interfaces so kubectl works from the outside.
+          # NOTE: port 6443 will be reachable on the public IP. Restrict with a
+          # Linode Cloud Firewall (see docs/07-kubernetes-k3s.md) if desired.
+          tls-san: []
+
+    # Cluster token — read by k3s server on startup.
+    - path: /etc/rancher/k3s/k3s-token
+      mode: 0600
+      contents:
+        inline: "${K3S_TOKEN}"
+
+# ---------------------------------------------------------------------------
+# systemd units
+# ---------------------------------------------------------------------------
+systemd:
+  units:
+    # Fetch + activate the k3s sysext on first boot, before k3s starts.
+    - name: k3s-sysext-install.service
+      enabled: true
+      contents: |
+        [Unit]
+        Description=Install k3s sysext from Flatcar Bakery
+        # Run before k3s so the binary is present.
+        Before=k3s.service
+        # Only run once — if the sysext is already active, skip.
+        ConditionPathExists=!/etc/extensions/k3s.raw
+        After=network-online.target
+        Wants=network-online.target
+
+        [Service]
+        Type=oneshot
+        RemainAfterExit=yes
+        # Refresh the sysupdate definitions and download k3s.
+        ExecStart=/usr/lib/systemd/systemd-sysupdate -C k3s update
+        # Activate the new sysext immediately (no reboot needed).
+        ExecStartPost=/usr/bin/systemctl restart systemd-sysext
+
+        [Install]
+        WantedBy=multi-user.target
+
+    # k3s server service — managed by the sysext's own unit drop-in.
+    # We enable the upstream unit and provide our config via /etc/rancher/k3s/config.yaml.
+    - name: k3s.service
+      enabled: true
+      dropins:
+        - name: 10-akamai.conf
+          contents: |
+            [Unit]
+            # Ensure the sysext (and thus the binary) is present first.
+            After=k3s-sysext-install.service
+            Requires=k3s-sysext-install.service

@@ -12,7 +12,13 @@
 # Either way, HOSTNAME and SSH_AUTHORIZED_KEY from .env are injected so the
 # generated Ignition carries your identity (Afterburn cannot use Linode keys).
 #
-# Usage:  scripts/render-ignition.sh [--backend knuckle|butane]
+# Kubernetes overlay (CLUSTER in .env, or --cluster):
+#   none    : pure Flatcar node (default)
+#   k3s     : compile butane/k8s/k3s-server.bu → Ignition fragment, then
+#             deep-merge with the base Ignition using scripts/lib/merge-ignition.jq.
+#             K3S_TOKEN is auto-generated and persisted to .env if unset.
+#
+# Usage:  scripts/render-ignition.sh [--backend knuckle|butane] [--cluster none|k3s]
 #
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -22,9 +28,11 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 load_env
 
 : "${BACKEND:=knuckle}"
+: "${CLUSTER:=none}"
 while [ $# -gt 0 ]; do
   case "$1" in
     --backend) BACKEND="${2:?--backend needs a value}"; shift 2 ;;
+    --cluster) CLUSTER="${2:?--cluster needs a value}"; shift 2 ;;
     *) die "unknown argument: $1" ;;
   esac
 done
@@ -89,14 +97,83 @@ render_butane() {
   "$bin" --strict < "$rendered" > "$OUT" || die "butane compile failed"
 }
 
+# ---------------------------------------------------------------------------
+# k3s overlay — compiled and deep-merged onto the base Ignition when
+# CLUSTER=k3s.  Called after the base has been written to $OUT.
+# ---------------------------------------------------------------------------
+merge_k3s_overlay() {
+  require jq envsubst
+
+  # Auto-generate and persist K3S_TOKEN if not already set.
+  if [ -z "${K3S_TOKEN:-}" ]; then
+    log "K3S_TOKEN not set — generating a random token"
+    K3S_TOKEN="$(openssl rand -hex 32)"
+    local envfile="${REPO_ROOT}/.env"
+    if [ -f "$envfile" ]; then
+      # Append only if the key is absent (avoid duplicates on re-runs).
+      if ! grep -q '^K3S_TOKEN=' "$envfile"; then
+        printf '\n# Auto-generated cluster token (do not share)\nK3S_TOKEN="%s"\n' \
+          "$K3S_TOKEN" >> "$envfile"
+        log "appended K3S_TOKEN to ${envfile}"
+      else
+        # Update the existing line in-place.
+        sed -i "s|^K3S_TOKEN=.*|K3S_TOKEN=\"${K3S_TOKEN}\"|" "$envfile"
+        log "updated K3S_TOKEN in ${envfile}"
+      fi
+    fi
+    export K3S_TOKEN
+  fi
+
+  # Download butane if not already present (reuses the same binary as render_butane).
+  : "${BUTANE_VERSION:=v0.23.0}"
+  local bin="${BUILD_DIR}/butane"
+  if [ ! -x "$bin" ]; then
+    local url="https://github.com/coreos/butane/releases/download/${BUTANE_VERSION}/butane-x86_64-unknown-linux-gnu"
+    log "downloading butane ${BUTANE_VERSION} (for k3s overlay)"
+    curl -fsSL -o "$bin" "$url" || die "butane download failed"
+    chmod +x "$bin"
+  fi
+
+  # Render the overlay template (substitute HOSTNAME + K3S_TOKEN).
+  local rendered_overlay="${BUILD_DIR}/k3s-server.rendered.bu"
+  # shellcheck disable=SC2016
+  HOSTNAME="$HOSTNAME" K3S_TOKEN="$K3S_TOKEN" \
+    envsubst '${HOSTNAME} ${K3S_TOKEN}' \
+    < "${REPO_ROOT}/butane/k8s/k3s-server.bu" > "$rendered_overlay"
+
+  # Compile overlay Butane → Ignition fragment.
+  local overlay_json="${BUILD_DIR}/k3s-overlay.json"
+  log "compiling k3s overlay Butane -> Ignition"
+  "$bin" --strict < "$rendered_overlay" > "$overlay_json" \
+    || die "k3s overlay butane compile failed"
+
+  # Deep-merge: base ($OUT) + overlay → merged.
+  local merged="${BUILD_DIR}/ignition.merged.json"
+  log "merging base + k3s overlay"
+  jq -n \
+    --slurpfile base "$OUT" \
+    --slurpfile overlay "$overlay_json" \
+    -f "${SCRIPT_DIR}/lib/merge-ignition.jq" > "$merged" \
+    || die "Ignition merge failed"
+
+  mv "$merged" "$OUT"
+  log "k3s overlay merged into ${OUT}"
+}
+
 case "$BACKEND" in
   knuckle) render_knuckle ;;
   butane)  render_butane ;;
   *) die "BACKEND must be 'knuckle' or 'butane' (got '${BACKEND}')" ;;
 esac
 
+case "$CLUSTER" in
+  none|"") : ;;
+  k3s)     merge_k3s_overlay ;;
+  *) die "CLUSTER must be 'none' or 'k3s' (got '${CLUSTER}')" ;;
+esac
+
 # Sanity: valid JSON with an ignition.version field.
 jq -e '.ignition.version' "$OUT" >/dev/null 2>&1 || die "output is not valid Ignition JSON"
 
-log "wrote ${OUT} (backend: ${BACKEND})"
+log "wrote ${OUT} (backend: ${BACKEND}, cluster: ${CLUSTER})"
 log "Ignition spec version: $(jq -r '.ignition.version' "$OUT")"

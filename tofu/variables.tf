@@ -21,9 +21,9 @@ variable "region" {
 }
 
 variable "instance_type" {
-  description = "Linode instance type."
+  description = "Linode instance type. g6-standard-1 (2 GB) is the minimum comfortable size for k3s; g6-nanode-1 (1 GB) is sufficient for bare Flatcar."
   type        = string
-  default     = "g6-nanode-1"
+  default     = "g6-standard-1"
 }
 
 variable "label" {

@@ -21,3 +21,8 @@ output "ssh_command" {
   description = "Convenience SSH command (key auth as the core user)."
   value       = "ssh core@${try(data.linode_instance_networking.this.ipv4[0].public[0].address, "<ip>")}"
 }
+
+output "kubeconfig_hint" {
+  description = "Command to fetch the k3s kubeconfig after a CLUSTER=k3s deploy."
+  value       = "make kubeconfig   # fetches /etc/rancher/k3s/k3s.yaml and writes ./kubeconfig"
+}
