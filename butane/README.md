@@ -16,9 +16,11 @@ make ignition BACKEND=butane
 scripts/render-ignition.sh --backend butane
 ```
 
-The render script downloads a pinned `butane` release (`BUTANE_VERSION` in
-`.env`), substitutes `${HOSTNAME}` and `${SSH_AUTHORIZED_KEY}` from your `.env`,
-and compiles with `--strict`.
+The render script downloads a pinned `butane` release (default version in
+`scripts/lib/versions.sh`, overridable via `BUTANE_VERSION` in `.env`),
+substitutes `${HOSTNAME}` and `${SSH_AUTHORIZED_KEY}` from your `.env` (set as
+`NODE_HOSTNAME` and `SSH_AUTHORIZED_KEY`) via envsubst, and compiles with
+`--strict`.
 
 ## Keeping it in sync
 

@@ -9,8 +9,9 @@
 #   butane  : compile butane/flatcar.bu with the standalone butane binary.
 #             No-Go fallback. The binary is downloaded + checksum-pinned.
 #
-# Either way, HOSTNAME and SSH_AUTHORIZED_KEY from .env are injected so the
-# generated Ignition carries your identity (Afterburn cannot use Linode keys).
+# Either way, NODE_HOSTNAME and SSH_AUTHORIZED_KEY from .env are injected so
+# the generated Ignition carries your identity (Afterburn cannot use Linode
+# keys).
 #
 # Kubernetes overlay (CLUSTER in .env, or --cluster):
 #   none    : pure Flatcar node (default)
@@ -38,10 +39,10 @@ while [ $# -gt 0 ]; do
 done
 
 need_var SSH_AUTHORIZED_KEY
-: "${HOSTNAME:=flatcar-akamai}"
+# Use NODE_HOSTNAME to avoid silently inheriting the Bash built-in $HOSTNAME.
+: "${NODE_HOSTNAME:=flatcar-akamai}"
 : "${CHANNEL:=stable}"
 
-BUILD_DIR="${REPO_ROOT}/build"
 mkdir -p "$BUILD_DIR"
 OUT="${BUILD_DIR}/ignition.json"
 
@@ -67,7 +68,7 @@ render_knuckle() {
 
   # Inject identity from .env into the committed config (single source of truth).
   local cfg="${BUILD_DIR}/knuckle-config.json"
-  jq --arg key "$SSH_AUTHORIZED_KEY" --arg host "$HOSTNAME" --arg ch "$CHANNEL" \
+  jq --arg key "$SSH_AUTHORIZED_KEY" --arg host "$NODE_HOSTNAME" --arg ch "$CHANNEL" \
     '.hostname=$host | .channel=$ch | .users[0].ssh_keys=[$key]' \
     "${REPO_ROOT}/knuckle/config.json" > "$cfg"
 
@@ -76,35 +77,18 @@ render_knuckle() {
 }
 
 render_butane() {
-  require curl jq
-  : "${BUTANE_VERSION:=v0.23.0}"
-  local bin="${BUILD_DIR}/butane"
-  if [ ! -x "$bin" ]; then
-    local url="https://github.com/coreos/butane/releases/download/${BUTANE_VERSION}/butane-x86_64-unknown-linux-gnu"
-    log "downloading butane ${BUTANE_VERSION}"
-    curl -fsSL -o "$bin" "$url" || die "butane download failed"
-    chmod +x "$bin"
-  fi
-
-  require envsubst
-  local rendered="${BUILD_DIR}/flatcar.rendered.bu"
-  # shellcheck disable=SC2016 # envsubst needs the literal variable names, not expansions
-  HOSTNAME="$HOSTNAME" SSH_AUTHORIZED_KEY="$SSH_AUTHORIZED_KEY" \
-    envsubst '${HOSTNAME} ${SSH_AUTHORIZED_KEY}' \
-    < "${REPO_ROOT}/butane/flatcar.bu" > "$rendered"
-
+  require jq
+  ensure_butane > /dev/null
+  # Templates use ${HOSTNAME} as the envsubst token; map NODE_HOSTNAME into it.
   log "compiling Butane -> Ignition"
-  "$bin" --strict < "$rendered" > "$OUT" || die "butane compile failed"
+  HOSTNAME="$NODE_HOSTNAME" \
+    compile_butane "${REPO_ROOT}/butane/flatcar.bu" "$OUT" HOSTNAME SSH_AUTHORIZED_KEY
 }
 
 # ---------------------------------------------------------------------------
-# k3s overlay — compiled and deep-merged onto the base Ignition when
-# CLUSTER=k3s.  Called after the base has been written to $OUT.
+# ensure_k3s_token — auto-generate K3S_TOKEN and persist it to .env if unset.
 # ---------------------------------------------------------------------------
-merge_k3s_overlay() {
-  require jq envsubst
-
-  # Auto-generate and persist K3S_TOKEN if not already set.
+ensure_k3s_token() {
   if [ -z "${K3S_TOKEN:-}" ]; then
     log "K3S_TOKEN not set — generating a random token"
     K3S_TOKEN="$(openssl rand -hex 32)"
@@ -116,36 +100,30 @@ merge_k3s_overlay() {
           "$K3S_TOKEN" >> "$envfile"
         log "appended K3S_TOKEN to ${envfile}"
       else
-        # Update the existing line in-place.
-        sed -i "s|^K3S_TOKEN=.*|K3S_TOKEN=\"${K3S_TOKEN}\"|" "$envfile"
+        # Update the existing line in-place (portable: avoids GNU-only sed -i).
+        sed_inplace "s|^K3S_TOKEN=.*|K3S_TOKEN=\"${K3S_TOKEN}\"|" "$envfile"
         log "updated K3S_TOKEN in ${envfile}"
       fi
     fi
     export K3S_TOKEN
   fi
+}
 
-  # Download butane if not already present (reuses the same binary as render_butane).
-  : "${BUTANE_VERSION:=v0.23.0}"
-  local bin="${BUILD_DIR}/butane"
-  if [ ! -x "$bin" ]; then
-    local url="https://github.com/coreos/butane/releases/download/${BUTANE_VERSION}/butane-x86_64-unknown-linux-gnu"
-    log "downloading butane ${BUTANE_VERSION} (for k3s overlay)"
-    curl -fsSL -o "$bin" "$url" || die "butane download failed"
-    chmod +x "$bin"
-  fi
+# ---------------------------------------------------------------------------
+# merge_k3s_overlay — compile butane/k8s/k3s-server.bu → Ignition fragment
+# and deep-merge it onto the base Ignition in $OUT.
+# Called after the base has been written to $OUT.
+# ---------------------------------------------------------------------------
+merge_k3s_overlay() {
+  require jq
+  ensure_k3s_token
 
-  # Render the overlay template (substitute HOSTNAME + K3S_TOKEN).
-  local rendered_overlay="${BUILD_DIR}/k3s-server.rendered.bu"
-  # shellcheck disable=SC2016
-  HOSTNAME="$HOSTNAME" K3S_TOKEN="$K3S_TOKEN" \
-    envsubst '${HOSTNAME} ${K3S_TOKEN}' \
-    < "${REPO_ROOT}/butane/k8s/k3s-server.bu" > "$rendered_overlay"
-
-  # Compile overlay Butane → Ignition fragment.
+  ensure_butane > /dev/null
   local overlay_json="${BUILD_DIR}/k3s-overlay.json"
+  # Templates use ${HOSTNAME} as the envsubst token; map NODE_HOSTNAME into it.
   log "compiling k3s overlay Butane -> Ignition"
-  "$bin" --strict < "$rendered_overlay" > "$overlay_json" \
-    || die "k3s overlay butane compile failed"
+  HOSTNAME="$NODE_HOSTNAME" \
+    compile_butane "${REPO_ROOT}/butane/k8s/k3s-server.bu" "$overlay_json" HOSTNAME K3S_TOKEN
 
   # Deep-merge: base ($OUT) + overlay → merged.
   local merged="${BUILD_DIR}/ignition.merged.json"

@@ -28,7 +28,6 @@ case "$CHANNEL" in
 esac
 [ "$ARCH" = "amd64" ] || die "this script currently supports ARCH=amd64 only (got '${ARCH}')"
 
-BUILD_DIR="${REPO_ROOT}/build"
 mkdir -p "$BUILD_DIR"
 
 IMG_GZ="flatcar_production_akamai_image.bin.gz"

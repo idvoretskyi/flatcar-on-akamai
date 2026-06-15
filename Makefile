@@ -77,14 +77,7 @@ validate: ## Offline validation: tofu fmt -check + validate, shellcheck, jq, but
 	cd $(TOFU_DIR) && $(TOFU) fmt -check && $(TOFU) init -backend=false >/dev/null && $(TOFU) validate
 	shellcheck scripts/*.sh scripts/lib/*.sh
 	jq -e . knuckle/config.json >/dev/null
-	@command -v butane >/dev/null 2>&1 && { \
-	  HOSTNAME=ci-test SSH_AUTHORIZED_KEY="ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA ci@test" \
-	    envsubst '$$HOSTNAME $$SSH_AUTHORIZED_KEY' < butane/flatcar.bu | butane --strict >/dev/null && \
-	  echo "butane: flatcar.bu OK"; \
-	  K3S_TOKEN=testtoken HOSTNAME=ci-test \
-	    envsubst '$$HOSTNAME $$K3S_TOKEN' < butane/k8s/k3s-server.bu | butane --strict >/dev/null && \
-	  echo "butane: k3s-server.bu OK"; \
-	} || echo "butane not found locally — skipped (CI validates)"
+	scripts/validate-butane.sh
 
 .PHONY: clean
 clean: ## Remove build artifacts
