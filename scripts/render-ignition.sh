@@ -90,6 +90,7 @@ render_butane() {
 # ---------------------------------------------------------------------------
 ensure_k3s_token() {
   if [ -z "${K3S_TOKEN:-}" ]; then
+    require openssl
     log "K3S_TOKEN not set — generating a random token"
     K3S_TOKEN="$(openssl rand -hex 32)"
     local envfile="${REPO_ROOT}/.env"

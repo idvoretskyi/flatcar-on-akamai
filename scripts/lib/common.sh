@@ -49,9 +49,10 @@ need_var() {
 }
 
 # ensure_butane — download the pinned butane binary into $BUILD_DIR/butane if it
-# is not already present. Echoes the path to the binary.
-# Uses BUTANE_VERSION and BUTANE_ARCH from scripts/lib/versions.sh (or overrides
-# from the environment / .env).
+# is not already present. Verifies the sha256 checksum after download (die on
+# mismatch). Echoes the path to the binary.
+# Uses BUTANE_VERSION, BUTANE_ARCH, and BUTANE_SHA256 from scripts/lib/versions.sh
+# (or overrides from the environment / .env).
 ensure_butane() {
   require curl
   local bin="${BUILD_DIR}/butane"
@@ -59,6 +60,31 @@ ensure_butane() {
     local url="https://github.com/coreos/butane/releases/download/${BUTANE_VERSION}/butane-${BUTANE_ARCH}"
     log "downloading butane ${BUTANE_VERSION}"
     curl -fsSL -o "$bin" "$url" || die "butane download failed"
+
+    # Verify integrity before trusting the binary.
+    if [ -n "${BUTANE_SHA256:-}" ]; then
+      local actual
+      # shasum is available on both macOS and Linux; sha256sum on Linux only.
+      if command -v shasum >/dev/null 2>&1; then
+        actual="$(shasum -a 256 "$bin" | awk '{print $1}')"
+      elif command -v sha256sum >/dev/null 2>&1; then
+        actual="$(sha256sum "$bin" | awk '{print $1}')"
+      else
+        rm -f "$bin"
+        die "neither shasum nor sha256sum found — cannot verify butane integrity"
+      fi
+      if [ "$actual" != "$BUTANE_SHA256" ]; then
+        rm -f "$bin"
+        die "butane checksum mismatch for ${BUTANE_ARCH}
+  expected: ${BUTANE_SHA256}
+  got:      ${actual}
+Download may be corrupted or tampered. Update BUTANE_SHA256 in scripts/lib/versions.sh if you intentionally changed BUTANE_VERSION."
+      fi
+      log "butane ${BUTANE_VERSION} checksum verified"
+    else
+      warn "no checksum pin found for BUTANE_ARCH=${BUTANE_ARCH} — skipping integrity check"
+    fi
+
     chmod +x "$bin"
   fi
   printf '%s' "$bin"

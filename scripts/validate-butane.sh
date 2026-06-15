@@ -25,6 +25,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/lib/common.sh
 . "${SCRIPT_DIR}/lib/common.sh"
 
+# Source .env so a BUTANE_VERSION override there is respected, consistent with
+# the other scripts. In CI there is no .env; the default from versions.sh is used.
+load_env
+
 mkdir -p "$BUILD_DIR"
 
 # ---------------------------------------------------------------------------
@@ -94,13 +98,21 @@ jq -n \
 jq -e '.ignition.version' "$MERGED_JSON" >/dev/null
 
 # Assert k3s systemd units are present.
-jq -e '.systemd.units | map(.name) | contains(["k3s.service","k3s-sysext-install.service"])' \
-  "$MERGED_JSON" >/dev/null \
+# Use index/any for exact-membership rather than contains(), which does
+# substring matching on string elements and could produce false positives.
+jq -e '
+  .systemd.units | map(.name) as $names |
+  ["k3s.service","k3s-sysext-install.service"] |
+  all(. as $x | $names | index($x) != null)
+' "$MERGED_JSON" >/dev/null \
   || die "merged Ignition is missing expected k3s systemd units"
 
-# Assert expected file paths are present.
-jq -e '.storage.files | map(.path) | contains(["/etc/rancher/k3s/config.yaml","/etc/hostname"])' \
-  "$MERGED_JSON" >/dev/null \
+# Assert expected file paths are present (exact-membership, same rationale).
+jq -e '
+  .storage.files | map(.path) as $paths |
+  ["/etc/rancher/k3s/config.yaml","/etc/hostname"] |
+  all(. as $x | $paths | index($x) != null)
+' "$MERGED_JSON" >/dev/null \
   || die "merged Ignition is missing expected storage files"
 
 log "merge + content assertions: OK"
