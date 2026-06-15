@@ -94,6 +94,7 @@ see [knuckle/README.md](knuckle/README.md).
 5. [Alternative: knuckle native install](docs/05-knuckle-rescue-mode.md)
 6. [Troubleshooting](docs/06-troubleshooting.md)
 7. [Kubernetes on Flatcar (k3s)](docs/07-kubernetes-k3s.md)
+8. [Live end-to-end testing](docs/08-e2e-testing.md)
 
 ## Kubernetes (k3s)
 
@@ -128,6 +129,22 @@ notes, the path to multi-node, and variable reference.
   — see [docs/06](docs/06-troubleshooting.md).
 - **No spend until you choose it.** Offline validation (`make validate`) never
   contacts Linode.
+
+## Live end-to-end testing
+
+`make e2e` and `make e2e-k3s` run a full deploy-assert-destroy cycle against a
+real Linode instance. The instance and ephemeral Flatcar image are **always
+deleted** at the end of the run via a `trap`-based teardown. A complete bare
+Flatcar run costs under $0.01; k3s under $0.02.
+
+```bash
+export LINODE_TOKEN=...   # Linodes RW + Images RW
+make e2e                  # bare Flatcar, g6-nanode-1
+make e2e-k3s              # k3s overlay,  g6-standard-1
+```
+
+See [docs/08-e2e-testing.md](docs/08-e2e-testing.md) for prerequisites, cost
+breakdown, interrupt recovery, and the `--keep` debugging flag.
 
 ## License
 
