@@ -11,6 +11,12 @@ BACKEND ?= knuckle
 # Kubernetes cluster overlay: none (default, pure Flatcar) or k3s.
 CLUSTER ?= none
 
+# Live e2e: Linode region (image + instance must match).
+E2E_REGION ?= gb-lon
+
+# Extra flags forwarded verbatim to scripts/e2e-linode.sh (e.g. ARGS=--keep).
+ARGS ?=
+
 .DEFAULT_GOAL := help
 
 .PHONY: help
@@ -77,15 +83,43 @@ validate: ## Offline validation: tofu fmt -check + validate, shellcheck, jq, but
 	cd $(TOFU_DIR) && $(TOFU) fmt -check && $(TOFU) init -backend=false >/dev/null && $(TOFU) validate
 	shellcheck scripts/*.sh scripts/lib/*.sh
 	jq -e . knuckle/config.json >/dev/null
-	@command -v butane >/dev/null 2>&1 && { \
-	  HOSTNAME=ci-test SSH_AUTHORIZED_KEY="ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA ci@test" \
-	    envsubst '$$HOSTNAME $$SSH_AUTHORIZED_KEY' < butane/flatcar.bu | butane --strict >/dev/null && \
-	  echo "butane: flatcar.bu OK"; \
-	  K3S_TOKEN=testtoken HOSTNAME=ci-test \
-	    envsubst '$$HOSTNAME $$K3S_TOKEN' < butane/k8s/k3s-server.bu | butane --strict >/dev/null && \
-	  echo "butane: k3s-server.bu OK"; \
-	} || echo "butane not found locally — skipped (CI validates)"
+	scripts/validate-butane.sh
 
 .PHONY: clean
 clean: ## Remove build artifacts
 	rm -rf build
+
+# ---------------------------------------------------------------------------
+# Live end-to-end tests (real Linode instance — costs money)
+# Requires: export LINODE_TOKEN=<token>  (scopes: Linodes RW + Images RW)
+# See docs/08-e2e-testing.md for full details and cost breakdown.
+# ---------------------------------------------------------------------------
+
+.PHONY: e2e
+e2e: ## Live e2e: bare Flatcar on g6-nanode-1 in $(E2E_REGION) — costs ~$0.01
+	E2E_REGION=$(E2E_REGION) BACKEND=$(BACKEND) \
+	  scripts/e2e-linode.sh --cluster none $(ARGS)
+
+.PHONY: e2e-k3s
+e2e-k3s: ## Live e2e: k3s overlay on g6-standard-1 in $(E2E_REGION) — costs ~$0.01
+	E2E_REGION=$(E2E_REGION) BACKEND=$(BACKEND) \
+	  scripts/e2e-linode.sh --cluster k3s $(ARGS)
+
+.PHONY: e2e-destroy
+e2e-destroy: ## Emergency teardown: destroy stray flatcar-e2e-* instances + images
+	@echo "==> listing stray e2e instances..."
+	@linode-cli linodes list --text --format=id,label,status \
+	  | grep 'flatcar-e2e-' || echo "  (none found)"
+	@echo "==> listing stray e2e images..."
+	@linode-cli images list --is_public false --text --format=id,label \
+	  | grep 'flatcar-e2e-' || echo "  (none found)"
+	@if [ -n "$(E2E_LABEL)" ]; then \
+	  echo "==> destroying instance with label $(E2E_LABEL)..."; \
+	  linode-cli linodes list --text --format=id,label \
+	    | awk -v lbl="$(E2E_LABEL)" '$$2==lbl{print $$1}' \
+	    | xargs -r -I{} linode-cli linodes delete {}; \
+	  echo "==> deleting image with label $(E2E_LABEL)..."; \
+	  linode-cli images list --is_public false --text --format=id,label \
+	    | awk -v lbl="$(E2E_LABEL)" '$$2==lbl{print $$1}' \
+	    | xargs -r -I{} linode-cli images delete {}; \
+	fi

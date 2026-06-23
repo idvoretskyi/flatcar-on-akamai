@@ -25,3 +25,6 @@ tofu.plan
 # Editor / OS noise
 *.swp
 .DS_Store
+
+# Live e2e scratch (kubeconfig written by make e2e-k3s / make kubeconfig)
+kubeconfig

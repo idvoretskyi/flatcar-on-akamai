@@ -30,7 +30,7 @@ jobs:
       - name: render via knuckle backend
         env:
           SSH_AUTHORIZED_KEY: ${{ inputs.ssh_key }}
-          HOSTNAME: ${{ inputs.hostname }}
+          NODE_HOSTNAME: ${{ inputs.hostname }}
           BACKEND: knuckle
         run: scripts/render-ignition.sh --backend knuckle
       - name: show summary

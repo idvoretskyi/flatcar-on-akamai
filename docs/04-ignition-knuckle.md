@@ -8,7 +8,7 @@ make ignition                 # uses BACKEND from .env (default: knuckle)
 make ignition BACKEND=butane  # override
 ```
 
-Both backends inject `HOSTNAME` and `SSH_AUTHORIZED_KEY` from `.env`.
+Both backends inject `NODE_HOSTNAME` and `SSH_AUTHORIZED_KEY` from `.env`.
 
 ## Backend A: knuckle (default, primary)
 
@@ -34,7 +34,7 @@ truth, validated the same way as a real install. See
 make ignition BACKEND=butane
 ```
 
-1. Downloads a pinned `butane` release (`BUTANE_VERSION`).
+1. Downloads a pinned `butane` release (`BUTANE_VERSION`, default in `scripts/lib/versions.sh`).
 2. `envsubst`s `${HOSTNAME}` / `${SSH_AUTHORIZED_KEY}` into
    [`butane/flatcar.bu`](../butane/flatcar.bu).
 3. Compiles with `butane --strict` → `build/ignition.json`.

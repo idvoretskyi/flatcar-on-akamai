@@ -40,35 +40,5 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - name: install butane
-        run: |
-          curl -fsSL -o /usr/local/bin/butane \
-            https://github.com/coreos/butane/releases/download/v0.23.0/butane-x86_64-unknown-linux-gnu
-          chmod +x /usr/local/bin/butane
-
-      - name: compile base (flatcar.bu)
-        run: |
-          export HOSTNAME=ci-test
-          export SSH_AUTHORIZED_KEY="ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA ci@test"
-          envsubst '${HOSTNAME} ${SSH_AUTHORIZED_KEY}' < butane/flatcar.bu > /tmp/base.rendered.bu
-          butane --strict < /tmp/base.rendered.bu > /tmp/base.json
-          jq -e '.ignition.version' /tmp/base.json
-
-      - name: compile k3s overlay (k3s-server.bu)
-        run: |
-          export HOSTNAME=ci-test
-          export K3S_TOKEN=ci-test-token-000000000000000000000000000000
-          envsubst '${HOSTNAME} ${K3S_TOKEN}' < butane/k8s/k3s-server.bu > /tmp/k3s.rendered.bu
-          butane --strict < /tmp/k3s.rendered.bu > /tmp/k3s-overlay.json
-          jq -e '.ignition.version' /tmp/k3s-overlay.json
-
-      - name: merge base + k3s overlay
-        run: |
-          jq -n \
-            --slurpfile base    /tmp/base.json \
-            --slurpfile overlay /tmp/k3s-overlay.json \
-            -f scripts/lib/merge-ignition.jq > /tmp/merged.json
-          jq -e '.ignition.version' /tmp/merged.json
-          # Assert key content is present in the merged doc.
-          jq -e '.systemd.units | map(.name) | contains(["k3s.service","k3s-sysext-install.service"])' /tmp/merged.json
-          jq -e '.storage.files | map(.path) | contains(["/etc/rancher/k3s/config.yaml","/etc/hostname"])' /tmp/merged.json
+      - name: validate butane templates
+        run: scripts/validate-butane.sh
